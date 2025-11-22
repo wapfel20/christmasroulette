@@ -7,16 +7,28 @@ interface WheelProps {
   isSpinning: boolean;
   onSpinComplete: (segment: WheelSegment) => void;
   spinTrigger: number;
-  onDetermineResult?: (segment: WheelSegment) => void;
 }
 
-const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger, onDetermineResult }) => {
+const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger }) => {
   const [rotation, setRotation] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
+  const [wheelSize, setWheelSize] = useState(0);
   
   // Audio Refs to DOM elements
   const spinAudioRef = useRef<HTMLAudioElement>(null);
   const winAudioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      if (entries[0]) {
+        setWheelSize(entries[0].contentRect.width);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const segmentAngle = 360 / WHEEL_SEGMENTS.length; 
 
@@ -51,17 +63,12 @@ const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger, 
       const newRotation = rotation + 1800 + Math.random() * 360;
       setRotation(newRotation);
 
-      const normalizedRotation = newRotation % 360;
-      const winningAngle = (360 - normalizedRotation) % 360;
-      const winningIndex = Math.floor(winningAngle / segmentAngle);
-      const winningSegment = WHEEL_SEGMENTS[winningIndex];
-
-      // Notify parent immediately so it can start pre-fetching AI content
-      if (onDetermineResult) {
-        onDetermineResult(winningSegment);
-      }
-
       setTimeout(() => {
+        const normalizedRotation = newRotation % 360;
+        const winningAngle = (360 - normalizedRotation) % 360;
+        const winningIndex = Math.floor(winningAngle / segmentAngle);
+        const winningSegment = WHEEL_SEGMENTS[winningIndex];
+
         // Stop spin sound explicitly
         if (spinAudioRef.current) {
           spinAudioRef.current.pause();
@@ -85,11 +92,21 @@ const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spinTrigger]);
 
-  const renderIcon = (iconName: string, color: string) => {
-    // Responsive sizing logic via className
+  // Calculate dynamic sizes
+  const safeSize = wheelSize || 300; // Default fallback
+  const fontSize = Math.max(9, safeSize / 28); // e.g., 28px at 800w
+  const iconSize = Math.max(14, safeSize / 18); // e.g., 44px at 800w
+  const iconPadding = Math.max(4, safeSize / 100);
+  const pointerSize = Math.max(24, safeSize / 10);
+  const wheelBorderWidth = Math.max(3, safeSize / 120);
+  const centerCapSize = safeSize * 0.13; // Reduced from 15% to 13%
+  const centerBorderWidth = Math.max(2, safeSize / 150);
+
+  const renderIcon = (iconName: string, color: string, size: number) => {
     const props = { 
       color: color, 
-      className: "drop-shadow-sm w-6 h-6 md:w-12 md:h-12" 
+      size: size,
+      className: "drop-shadow-sm" 
     };
     switch (iconName) {
       case 'santa': return <Gift {...props} />;
@@ -106,7 +123,6 @@ const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger, 
 
   // Text shadow helper for readability
   const getTextShadow = (textColor: string) => {
-    // If text is light (white/gold), use dark outline. If text is dark (brown/green), use white outline.
     const isDarkText = textColor === '#422006' || textColor === '#713f12' || textColor === '#14532d';
     if (isDarkText) {
        return '0 0 3px rgba(255,255,255,0.9), 0 0 6px rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.2)';
@@ -115,7 +131,7 @@ const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger, 
   };
 
   return (
-    <div className="relative w-full max-w-[800px] aspect-square mx-auto">
+    <div ref={containerRef} className="relative w-full h-full aspect-square mx-auto">
       {/* Audio Elements (Hidden) */}
       <audio ref={spinAudioRef} loop preload="auto">
         <source src="https://upload.wikimedia.org/wikipedia/commons/transcoded/6/6d/Roulette_wheel.ogg/Roulette_wheel.ogg.mp3" type="audio/mpeg" />
@@ -127,17 +143,25 @@ const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger, 
       </audio>
 
       {/* Pointer */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-4 md:-translate-y-8 z-20 filter drop-shadow-lg">
-         <ChevronDown className="w-16 h-16 md:w-24 md:h-24 text-christmas-red" stroke="#FDFBF7" strokeWidth={2} />
+      <div 
+        className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/4 z-20 filter drop-shadow-lg pointer-events-none"
+        style={{ width: pointerSize, height: pointerSize }}
+      >
+         <ChevronDown 
+            className="text-christmas-red w-full h-full" 
+            stroke="#FDFBF7" 
+            strokeWidth={2} 
+         />
       </div>
 
       {/* The Wheel */}
       <div
         ref={wheelRef}
-        className="w-full h-full rounded-full border-4 md:border-8 border-white shadow-2xl overflow-hidden relative transition-transform duration-[5000ms]"
+        className="w-full h-full rounded-full border-white shadow-2xl overflow-hidden relative transition-transform duration-[5000ms]"
         style={{ 
           transform: `rotate(${rotation}deg)`,
-          transitionTimingFunction: 'cubic-bezier(0.2, 0.5, 0.1, 1)'
+          transitionTimingFunction: 'cubic-bezier(0.2, 0.5, 0.1, 1)',
+          borderWidth: `${wheelBorderWidth}px`
         }}
       >
         <svg
@@ -242,7 +266,7 @@ const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger, 
             {/* 12. Gingerbread */}
             <pattern id="pattern-gingerbread" patternUnits="userSpaceOnUse" width="20" height="20">
               <rect width="20" height="20" fill="#92400e" />
-              <circle cx="10" cy="10" r="6" fill="none" stroke="#FDFBF7" strokeWidth="1.5" strokeDasharray="2 2" />
+              <circle cx="10" cy="10" r="6" fill="none" stroke="#FDFBF7" strokeWidth={1.5} strokeDasharray="2 2" />
               <circle cx="10" cy="10" r="1" fill="#ef4444" />
               <path d="M5 5 L15 15 M15 5 L5 15" stroke="#16a34a" strokeWidth="0.5" opacity="0.5" />
             </pattern>
@@ -276,20 +300,25 @@ const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger, 
               }}
             >
                <div 
-                className="absolute -top-2 left-1/2 -translate-x-1/2 flex flex-col items-center justify-start h-full pt-4 md:pt-8"
+                className="absolute -top-2 left-1/2 -translate-x-1/2 flex flex-col items-center justify-start h-full"
+                style={{ paddingTop: `${safeSize * 0.04}px` }}
                >
                  {/* Icon - Added background circle for better visibility on patterns */}
                  <div 
-                  className="mb-2 transform -rotate-90 p-2 rounded-full bg-white shadow-md border border-gray-100" 
-                  style={{ transform: 'rotate(0deg)' }}
+                  className="mb-2 transform -rotate-90 rounded-full bg-white shadow-md border border-gray-100 flex items-center justify-center" 
+                  style={{ 
+                    transform: 'rotate(0deg)',
+                    padding: `${iconPadding}px`,
+                  }}
                  >
-                   {renderIcon(segment.icon, segment.color.includes('pattern') ? '#D42426' : segment.color)}
+                   {renderIcon(segment.icon, segment.color.includes('pattern') ? '#D42426' : segment.color, iconSize)}
                  </div>
 
                  {/* Text */}
                  <div 
-                  className="whitespace-nowrap text-base md:text-2xl lg:text-3xl font-bold font-christmas tracking-widest"
+                  className="whitespace-nowrap font-bold font-christmas tracking-widest"
                   style={{ 
+                    fontSize: `${fontSize}px`,
                     color: segment.textColor,
                     writingMode: 'vertical-rl',
                     textOrientation: 'mixed',
@@ -307,13 +336,20 @@ const Wheel: React.FC<WheelProps> = ({ isSpinning, onSpinComplete, spinTrigger, 
         })}
 
         {/* Center Cap */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 md:w-16 md:h-16 bg-gradient-to-br from-christmas-gold to-yellow-600 rounded-full shadow-lg z-10 border-4 md:border-6 border-white flex items-center justify-center">
-           <div className="w-3 h-3 md:w-6 md:h-6 bg-white rounded-full shadow-inner"></div>
+        <div 
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-br from-christmas-gold to-yellow-600 rounded-full shadow-lg z-10 border-white flex items-center justify-center"
+          style={{
+            width: centerCapSize,
+            height: centerCapSize,
+            borderWidth: centerBorderWidth
+          }}
+        >
+           <div className="w-[20%] h-[20%] bg-white rounded-full shadow-inner"></div>
         </div>
       </div>
       
       {/* Base/Stand Graphic */}
-      <div className="absolute -bottom-12 md:-bottom-24 left-1/2 -translate-x-1/2 w-32 md:w-64 h-12 md:h-24 bg-gray-800 rounded-t-lg -z-10 opacity-20 blur-sm"></div>
+      <div className="absolute -bottom-[10%] left-1/2 -translate-x-1/2 w-[40%] h-[15%] bg-gray-800 rounded-t-full -z-10 opacity-20 blur-sm"></div>
     </div>
   );
 };

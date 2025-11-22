@@ -1,20 +1,44 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { WheelSegment, Player } from '../types';
 import { X, Sparkles, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { generateCommentary, generateElfSpeech } from '../services/geminiService';
 
 interface ResultCardProps {
   segment: WheelSegment;
   player: Player;
   onClose: () => void;
-  commentary: string | null;
-  audioBuffer: AudioBuffer | null;
-  isLoading: boolean;
 }
 
-const ResultCard: React.FC<ResultCardProps> = ({ segment, player, onClose, commentary, audioBuffer, isLoading }) => {
+const ResultCard: React.FC<ResultCardProps> = ({ segment, player, onClose }) => {
+  const [commentary, setCommentary] = useState<string | null>(null);
+  const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  useEffect(() => {
+    const fetchContent = async () => {
+      setIsLoading(true);
+      try {
+        // 1. Generate Text
+        const text = await generateCommentary(segment, player.name);
+        setCommentary(text);
+
+        // 2. Generate Audio
+        const script = `Ho ho ho! ${player.name} landed on ${segment.label}! Here is the rule. ${segment.description}. ${text}`;
+        const buffer = await generateElfSpeech(script);
+        setAudioBuffer(buffer);
+      } catch (e) {
+        console.error("Error generating content:", e);
+        setCommentary("The elves are having trouble with the connection!");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchContent();
+  }, [segment, player.name]);
 
   // Cleanup audio on unmount
   useEffect(() => {
@@ -70,19 +94,52 @@ const ResultCard: React.FC<ResultCardProps> = ({ segment, player, onClose, comme
     }
   };
 
+  // Helper to determine solid background colors for the header based on patterns
+  const getHeaderStyle = () => {
+    const c = segment.color;
+    
+    // Handle Patterns (Map to solid dominant colors)
+    if (c.includes('candy-cane')) return { bg: '#D42426', text: '#FFFFFF' };
+    if (c.includes('snowflake-blue')) return { bg: '#7DD3FC', text: '#FFFFFF' };
+    if (c.includes('red-dots')) return { bg: '#D42426', text: '#FFFFFF' };
+    if (c.includes('plaid')) return { bg: '#166534', text: '#FFFFFF' };
+    if (c.includes('gold-foil')) return { bg: '#EAB308', text: '#713f12' };
+    if (c.includes('stripes-rg')) return { bg: '#D42426', text: '#FFFFFF' };
+    if (c.includes('kraft')) return { bg: '#d4b881', text: '#422006' };
+    if (c.includes('zigzag-red')) return { bg: '#D42426', text: '#FFFFFF' };
+    if (c.includes('holly')) return { bg: '#dcfce7', text: '#14532d' };
+    if (c.includes('midnight')) return { bg: '#1E3A8A', text: '#fbbf24' };
+    if (c.includes('snowflake-red')) return { bg: '#ef4444', text: '#FFFFFF' };
+    if (c.includes('gingerbread')) return { bg: '#92400e', text: '#FFFFFF' };
+
+    // Handle Solid Hex Codes (Non-patterns)
+    if (!c.includes('url')) {
+       if (c === '#FDFBF7') return { bg: '#2F5D35', text: '#FFFFFF' }; // If cream, use Green bg
+       return { bg: c, text: segment.textColor };
+    }
+
+    // Fallback
+    return { bg: '#D42426', text: '#FFFFFF' };
+  };
+
+  const headerStyle = getHeaderStyle();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border-4 border-christmas-gold transform transition-all scale-100 relative">
         
         {/* Decorative Header */}
-        <div className={`p-6 text-center relative overflow-hidden`} style={{ backgroundColor: segment.color === '#FDFBF7' ? '#2F5D35' : segment.color }}>
+        <div 
+          className={`p-6 text-center relative overflow-hidden`} 
+          style={{ backgroundColor: headerStyle.bg }}
+        >
            {/* Pattern overlay */}
            <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')]"></div>
            
-           <h2 className="text-3xl font-christmas relative z-10" style={{ color: segment.color === '#FDFBF7' ? 'white' : segment.textColor }}>
+           <h2 className="text-3xl font-christmas relative z-10" style={{ color: headerStyle.text }}>
              {player.name} landed on...
            </h2>
-           <div className="mt-2 text-4xl md:text-5xl font-extrabold uppercase tracking-tight relative z-10 drop-shadow-md" style={{ color: segment.color === '#FDFBF7' ? 'white' : segment.textColor }}>
+           <div className="mt-2 text-4xl md:text-5xl font-extrabold uppercase tracking-tight relative z-10 drop-shadow-md" style={{ color: headerStyle.text }}>
              {segment.label}
            </div>
         </div>
