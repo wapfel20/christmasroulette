@@ -1,5 +1,6 @@
+
 import { GoogleGenAI } from "@google/genai";
-import { WheelSegment } from "../types";
+import { WheelSegment, ElfPersona } from "../types";
 
 const apiKey = process.env.API_KEY;
 
@@ -34,7 +35,7 @@ async function decodeAudioData(
   return buffer;
 }
 
-export const generateCommentary = async (segment: WheelSegment, playerName: string): Promise<string> => {
+export const generateCommentary = async (segment: WheelSegment, playerName: string, elf: ElfPersona): Promise<string> => {
   if (!apiKey) {
     return "Ho ho ho! The spirits of Christmas have spoken!";
   }
@@ -42,17 +43,21 @@ export const generateCommentary = async (segment: WheelSegment, playerName: stri
   try {
     const ai = new GoogleGenAI({ apiKey });
     const prompt = `
-      You are a witty, slightly snarky, but fun Christmas Elf game show host.
+      You are ${elf.name}, a ${elf.personality} Christmas Elf game show host.
       A player named "${playerName}" just spun the Wheel of Christmas and landed on "${segment.label}".
       The rule for this spot is: "${segment.description}".
       
-      Give a very short (max 2 sentences), funny reaction to this result. 
-      If they have to steal, encourage mischief. If they are blindfolded, make a joke about it.
+      Give a very short (max 1 sentence) reaction to this result based on your personality.
+      
+      Persona Guidelines:
+      - Name: ${elf.name}
+      - Personality: ${elf.personality}
+      
       Keep it family friendly but entertaining.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-lite-latest',
       contents: prompt,
     });
 
@@ -63,26 +68,26 @@ export const generateCommentary = async (segment: WheelSegment, playerName: stri
   }
 };
 
-export const generatePlayerAnnouncement = async (playerName: string): Promise<string> => {
+export const generatePlayerAnnouncement = async (playerName: string, elf: ElfPersona): Promise<string> => {
   if (!apiKey) return `It's ${playerName}'s turn! Give the wheel a spin!`;
 
   try {
     const ai = new GoogleGenAI({ apiKey });
     const prompt = `
-      You are a high-energy, mischievous Christmas Elf game show host.
+      You are ${elf.name}, a ${elf.personality} Christmas Elf game show host.
       It is now "${playerName}"'s turn to spin the wheel.
       
-      Write a very short (1 sentence), funny, holiday-themed announcement telling them to spin.
-      Examples: 
-      - "You're up ${playerName}! Give it a whirl and see if you've been naughty or nice!"
-      - "${playerName}, the reindeer are watching! Spin the wheel!"
-      - "Step right up ${playerName}! Let's see what Christmas future holds!"
+      Write a very short (1 sentence) announcement telling them to spin, using your specific personality style.
+      
+      Persona Guidelines:
+      - Name: ${elf.name}
+      - Personality: ${elf.personality}
       
       Keep it exciting and varied.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-lite-latest',
       contents: prompt,
     });
 
@@ -93,54 +98,56 @@ export const generatePlayerAnnouncement = async (playerName: string): Promise<st
   }
 };
 
-export const generateOrderAnnouncement = async (playerNames: string[]): Promise<string> => {
+export const generateOrderAnnouncement = async (playerNames: string[], elf: ElfPersona): Promise<string> => {
   if (!apiKey) {
     const first = playerNames[0] || "someone";
     const last = playerNames[playerNames.length - 1] || "someone else";
-    return `Ooh, looks like ${first} is the lucky player who gets to go first! And looks like ${last} might be getting a lump of coal. Let's get started!`;
+    return `Hello! I'm ${elf.name}! Ooh, looks like ${first} is the lucky player who gets to go first! And looks like ${last} might be getting a lump of coal. Let's get started!`;
   }
 
   try {
     const ai = new GoogleGenAI({ apiKey });
     const prompt = `
-      You are a high-energy, mischievous Christmas Elf game show host.
+      You are ${elf.name}, a ${elf.personality} Christmas Elf game show host.
       The random order of play has been decided.
       The players are (in order): ${playerNames.join(', ')}.
       
-      Write a short script announcing this.
-      - Mention the first player (${playerNames[0]}) is "lucky" to go first.
-      - List the others quickly or generally.
-      - Make a funny roast about the last player (${playerNames[playerNames.length - 1]}) potentially getting a lump of coal or leftovers.
-      - End exactly with: "Let's get started and get into some holiday mischief!"
+      Write a script announcing this.
+      - Start by introducing yourself: "Hello everyone! I'm ${elf.name}, your ${elf.description}!"
+      - Announce that ${playerNames[0]} is the lucky one starting us off.
+      - List the others quickly.
+      - Make a comment about the last player (${playerNames[playerNames.length - 1]}) based on your personality (e.g. if you are grumpy, say they are slow; if you are sweet, say you saved the best for last, etc).
+      - End exactly with: "Let's get started!"
       
-      Keep it under 3 sentences total.
+      Keep it under 4 sentences total.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-lite-latest',
       contents: prompt,
     });
 
-    return response.text || `The order is set! ${playerNames[0]} is first. Let's get into some holiday mischief!`;
+    return response.text || `I'm ${elf.name}! The order is set! ${playerNames[0]} is first. Let's get started!`;
   } catch (error) {
     console.error("Error fetching order announcement:", error);
-    return `The order is set! Let's get into some holiday mischief!`;
+    return `The order is set! Let's get started!`;
   }
 };
 
-export const generateElfSpeech = async (text: string): Promise<AudioBuffer | null> => {
+export const generateElfSpeech = async (text: string, elf: ElfPersona): Promise<AudioBuffer | null> => {
   if (!apiKey) return null;
 
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `(Excited and mystical elf voice) ${text}` }] }],
+      contents: [{ parts: [{ text: text }] }],
       config: {
+        // systemInstruction removed to avoid 500 errors on TTS
         responseModalities: ["AUDIO"],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Puck' }, // Puck is mischievous
+            prebuiltVoiceConfig: { voiceName: elf.voice },
           },
         },
       },

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { Player } from '../types';
 import { Sparkles, Wand2, ArrowRight, Coffee, Volume2 } from 'lucide-react';
@@ -7,9 +8,10 @@ interface OrderRevealProps {
   onConfirm: () => void;
   firstPlayerReady: boolean;
   orderAudioBuffer: AudioBuffer | null;
+  hostName: string;
 }
 
-const OrderReveal: React.FC<OrderRevealProps> = ({ players, onConfirm, firstPlayerReady, orderAudioBuffer }) => {
+const OrderReveal: React.FC<OrderRevealProps> = ({ players, onConfirm, firstPlayerReady, orderAudioBuffer, hostName }) => {
   const [isWaitingForElf, setIsWaitingForElf] = useState(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -76,8 +78,8 @@ const OrderReveal: React.FC<OrderRevealProps> = ({ players, onConfirm, firstPlay
           <Wand2 size={64} className="text-christmas-red animate-bounce" />
           <Sparkles size={32} className="absolute -top-2 -right-4 text-christmas-gold animate-spin-slow" />
         </div>
-        <h2 className="text-2xl font-christmas font-bold text-gray-800 mb-4">Consulting the North Pole...</h2>
-        <p className="text-gray-600 text-lg">The elves are sorting the list (and checking it twice)!</p>
+        <h2 className="text-2xl font-christmas font-bold text-gray-800 mb-4">{hostName} is preparing the list...</h2>
+        <p className="text-gray-600 text-lg">Checking it twice to see who's naughty or nice!</p>
       </div>
     );
   }
@@ -90,16 +92,21 @@ const OrderReveal: React.FC<OrderRevealProps> = ({ players, onConfirm, firstPlay
           <Coffee size={64} className="text-christmas-red animate-bounce" />
           <Sparkles size={32} className="absolute -top-2 -right-4 text-christmas-gold animate-spin-slow" />
         </div>
-        <h2 className="text-2xl font-christmas font-bold text-gray-800 mb-4">Elves on Coffee Break...</h2>
-        <p className="text-gray-600 text-lg">Our elf host is currently making hot cocoa... kindly wait in the lobby until he's ready to lead our game.</p>
+        <h2 className="text-2xl font-christmas font-bold text-gray-800 mb-4">{hostName}'s Coffee Break...</h2>
+        <p className="text-gray-600 text-lg">{hostName} is currently making hot cocoa... kindly wait here until they are ready to lead our game.</p>
       </div>
     );
   }
 
   // 3. Ready State (Show List)
   return (
-    <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-xl p-8 border-t-8 border-christmas-green animate-fade-in">
-       <div className="text-center mb-6">
+    <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-xl p-8 border-t-8 border-christmas-green animate-fade-in relative overflow-hidden">
+       {/* Host Badge */}
+       <div className="absolute top-0 right-0 bg-christmas-gold text-white text-xs font-bold px-3 py-1 rounded-bl-lg shadow-sm z-10 uppercase">
+         HOST: {hostName}
+       </div>
+
+       <div className="text-center mb-6 mt-2">
          <div className="flex items-center justify-center gap-2 mb-2">
             <h2 className="text-3xl font-christmas text-christmas-red">The Official Order</h2>
             {isPlaying && <Volume2 size={24} className="text-christmas-green animate-pulse" />}

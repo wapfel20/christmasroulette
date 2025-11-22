@@ -1,6 +1,45 @@
-import { SegmentColor, WheelSegment } from './types';
+
+import { SegmentColor, WheelSegment, ElfPersona } from './types';
 
 const SANTAS_CHOICE_DESC = "You are on the Nice List. You may Unwrap a New Gift OR Steal an available gift.";
+
+export const ELF_HOSTS: ElfPersona[] = [
+  {
+    id: 'barnaby',
+    name: 'Barnaby',
+    voice: 'Puck',
+    personality: 'Mischievous, snarky, and loves chaos',
+    description: 'The Chief Elf of Mischief'
+  },
+  {
+    id: 'nutmeg',
+    name: 'Nutmeg',
+    voice: 'Kore',
+    personality: 'Overly sweet, cheerful, and obsessed with baking cookies',
+    description: 'Head of the Holiday Bakery'
+  },
+  {
+    id: 'coal',
+    name: 'Coal',
+    voice: 'Charon',
+    personality: 'Grumpy, tired of Christmas music, and sarcastic',
+    description: 'The Reindeer Stable Manager'
+  },
+  {
+    id: 'tinsel',
+    name: 'Tinsel',
+    voice: 'Zephyr',
+    personality: 'Whimsical, dreamy, and speaks in flowery language',
+    description: 'Decorator of the North Pole'
+  },
+  {
+    id: 'blitz',
+    name: 'Blitz',
+    voice: 'Fenrir',
+    personality: 'High energy, loud, and treats everything like a sport',
+    description: 'Toy Assembly Coach'
+  }
+];
 
 export const WHEEL_SEGMENTS: WheelSegment[] = [
   {

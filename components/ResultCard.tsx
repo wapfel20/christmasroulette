@@ -1,44 +1,19 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { WheelSegment, Player } from '../types';
-import { X, Sparkles, Loader2, Volume2, VolumeX } from 'lucide-react';
-import { generateCommentary, generateElfSpeech } from '../services/geminiService';
+import { Sparkles, Loader2, Volume2 } from 'lucide-react';
 
 interface ResultCardProps {
   segment: WheelSegment;
   player: Player;
   onClose: () => void;
+  preloadedCommentary?: string;
+  preloadedAudio?: AudioBuffer | null;
 }
 
-const ResultCard: React.FC<ResultCardProps> = ({ segment, player, onClose }) => {
-  const [commentary, setCommentary] = useState<string | null>(null);
-  const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+const ResultCard: React.FC<ResultCardProps> = ({ segment, player, onClose, preloadedCommentary, preloadedAudio }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
-
-  useEffect(() => {
-    const fetchContent = async () => {
-      setIsLoading(true);
-      try {
-        // 1. Generate Text
-        const text = await generateCommentary(segment, player.name);
-        setCommentary(text);
-
-        // 2. Generate Audio
-        const script = `Ho ho ho! ${player.name} landed on ${segment.label}! Here is the rule. ${segment.description}. ${text}`;
-        const buffer = await generateElfSpeech(script);
-        setAudioBuffer(buffer);
-      } catch (e) {
-        console.error("Error generating content:", e);
-        setCommentary("The elves are having trouble with the connection!");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchContent();
-  }, [segment, player.name]);
 
   // Cleanup audio on unmount
   useEffect(() => {
@@ -52,12 +27,12 @@ const ResultCard: React.FC<ResultCardProps> = ({ segment, player, onClose }) => 
     };
   }, []);
 
-  // Auto-play when audioBuffer becomes available
+  // Auto-play when mounted if audio is provided
   useEffect(() => {
-    if (audioBuffer) {
-      playAudio(audioBuffer);
+    if (preloadedAudio) {
+      playAudio(preloadedAudio);
     }
-  }, [audioBuffer]);
+  }, [preloadedAudio]);
 
   const playAudio = async (buffer: AudioBuffer) => {
     try {
@@ -89,8 +64,8 @@ const ResultCard: React.FC<ResultCardProps> = ({ segment, player, onClose }) => 
     if (isPlaying) {
       if (audioSourceRef.current) audioSourceRef.current.stop();
       setIsPlaying(false);
-    } else if (audioBuffer) {
-      playAudio(audioBuffer);
+    } else if (preloadedAudio) {
+      playAudio(preloadedAudio);
     }
   };
 
@@ -160,9 +135,7 @@ const ResultCard: React.FC<ResultCardProps> = ({ segment, player, onClose }) => 
               </div>
               
               {/* Audio Controls */}
-              {isLoading && !audioBuffer ? (
-                 <Loader2 size={16} className="animate-spin text-gray-400" />
-              ) : audioBuffer ? (
+              {preloadedAudio ? (
                  <button 
                    onClick={handlePlayClick}
                    className={`flex items-center gap-1 text-xs font-bold uppercase px-2 py-1 rounded-full transition-all ${isPlaying ? 'bg-christmas-green text-white animate-pulse' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
@@ -173,13 +146,13 @@ const ResultCard: React.FC<ResultCardProps> = ({ segment, player, onClose }) => 
               ) : null}
             </div>
             
-            {isLoading && !commentary ? (
+            {!preloadedCommentary ? (
                <div className="flex justify-center py-2 text-gray-400">
                  <Loader2 className="animate-spin" />
                </div>
             ) : (
               <p className="text-gray-600 italic text-sm md:text-base">
-                "{commentary}"
+                "{preloadedCommentary}"
               </p>
             )}
           </div>

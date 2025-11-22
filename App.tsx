@@ -1,18 +1,27 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Player, GameState, WheelSegment } from './types';
+import { Player, GameState, WheelSegment, ElfPersona } from './types';
+import { WHEEL_SEGMENTS, ELF_HOSTS } from './constants';
 import GameLobby from './components/GameLobby';
 import Wheel from './components/Wheel';
 import ResultCard from './components/ResultCard';
 import OrderReveal from './components/OrderReveal';
-import { Gift, RefreshCw, Trophy, Snowflake, Volume2 } from 'lucide-react';
-import { generatePlayerAnnouncement, generateElfSpeech, generateOrderAnnouncement } from './services/geminiService';
+import { Gift, RefreshCw, Trophy, Snowflake, Volume2, User } from 'lucide-react';
+import { generatePlayerAnnouncement, generateElfSpeech, generateOrderAnnouncement, generateCommentary } from './services/geminiService';
 
 function App() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [gameState, setGameState] = useState<GameState>(GameState.LOBBY);
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [spinTrigger, setSpinTrigger] = useState(0);
+  
+  // Elf Host State
+  const [currentElf, setCurrentElf] = useState<ElfPersona>(ELF_HOSTS[0]);
+
+  // Spin Logic State
+  const [targetSegment, setTargetSegment] = useState<WheelSegment | null>(null);
+  const [resultContent, setResultContent] = useState<{ text: string, audio: AudioBuffer | null } | null>(null);
+  
   const [lastResult, setLastResult] = useState<WheelSegment | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [isAnnouncing, setIsAnnouncing] = useState(false);
@@ -24,8 +33,11 @@ function App() {
   const announcementSource = useRef<AudioBufferSourceNode | null>(null);
   const lastAnnouncedPlayerId = useRef<string | null>(null);
   
-  // Cache for pre-generated audio announcements
-  const audioCache = useRef<Map<string, AudioBuffer>>(new Map());
+  // Caches for pre-generated content
+  // 1. Intro Cache: Stores the "It's your turn!" audio
+  const introCache = useRef<Map<string, AudioBuffer>>(new Map());
+  // 2. Result Cache: Stores the "You won X!" commentary text and audio
+  const resultCache = useRef<Map<string, { text: string, audio: AudioBuffer | null }>>(new Map());
 
   const handleAddPlayer = (name: string) => {
     setPlayers([...players, { id: crypto.randomUUID(), name, hasGone: false }]);
@@ -36,18 +48,40 @@ function App() {
   };
 
   const handleStartGame = () => {
-    // Fisher-Yates Shuffle
+    // 1. Randomize Players (Fisher-Yates Shuffle)
     const shuffledPlayers = [...players];
     for (let i = shuffledPlayers.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
     }
-    setPlayers(shuffledPlayers);
+
+    // 2. Pre-determine results for EVERY player now.
+    // This guarantees randomness and allows us to pre-warm everything.
+    const playersWithSegments = shuffledPlayers.map(p => {
+       const randomSegment = WHEEL_SEGMENTS[Math.floor(Math.random() * WHEEL_SEGMENTS.length)];
+       return {
+         ...p,
+         assignedSegmentId: randomSegment.id
+       };
+    });
+
+    setPlayers(playersWithSegments);
+
+    // 3. Randomize Elf Host (Ensure we pick a different one from last time)
+    let randomElf;
+    if (ELF_HOSTS.length > 1) {
+      do {
+        randomElf = ELF_HOSTS[Math.floor(Math.random() * ELF_HOSTS.length)];
+      } while (randomElf.id === currentElf.id);
+    } else {
+      randomElf = ELF_HOSTS[0];
+    }
+    setCurrentElf(randomElf);
+
     setGameState(GameState.DETERMINING_ORDER);
   };
 
   const handleConfirmOrder = () => {
-    // Stop order announcement if still playing
     if (announcementSource.current) {
        try { announcementSource.current.stop(); } catch (e) { /* ignore */ }
     }
@@ -55,45 +89,62 @@ function App() {
     setCurrentPlayerIndex(0);
   };
 
-  // Pre-warm audio when order is determined
+  // ---------------------------------------------------------------------------
+  // Global Pre-warming Effect
+  // This runs once the order is determined and processes ALL players in background.
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (gameState === GameState.DETERMINING_ORDER) {
-      setFirstPlayerReady(false); // Reset
-      setOrderAudioBuffer(null); // Reset order audio
-      audioCache.current.clear();
+      setFirstPlayerReady(false);
+      setOrderAudioBuffer(null);
+      introCache.current.clear();
+      resultCache.current.clear();
 
-      const prewarmContent = async () => {
-        // 1. Generate Order Commentary Audio
+      const prewarmGame = async () => {
+        // 1. Generate Order Announcement (Prioritized)
         try {
           const names = players.map(p => p.name);
-          const text = await generateOrderAnnouncement(names);
-          const buffer = await generateElfSpeech(text);
+          const text = await generateOrderAnnouncement(names, currentElf);
+          const buffer = await generateElfSpeech(text, currentElf);
           setOrderAudioBuffer(buffer);
         } catch (e) {
           console.error("Failed to generate order commentary", e);
-          // Create empty buffer as fallback to unblock UI if needed, or handle in UI
         }
 
-        // 2. Process sequentially to avoid rate limits, starting with the first player
+        // 2. Sequential Pre-warming for ALL players
+        // We do this sequentially to avoid hitting rate limits with too many concurrent requests,
+        // but since we start immediately, we should stay ahead of the game.
         for (let i = 0; i < players.length; i++) {
           const player = players[i];
           
-          // If we already have it, just check flag and continue
-          if (audioCache.current.has(player.id)) {
+          // Skip if already generated (in case of weird re-renders)
+          if (introCache.current.has(player.id) && resultCache.current.has(player.id)) {
             if (i === 0) setFirstPlayerReady(true);
             continue;
           }
 
           try {
-            const text = await generatePlayerAnnouncement(player.name);
-            const buffer = await generateElfSpeech(text);
-            if (buffer) {
-              audioCache.current.set(player.id, buffer);
+            // A. Generate Intro Announcement
+            const introText = await generatePlayerAnnouncement(player.name, currentElf);
+            const introBuffer = await generateElfSpeech(introText, currentElf);
+            if (introBuffer) introCache.current.set(player.id, introBuffer);
+
+            // B. Generate Result Commentary (using pre-assigned segment)
+            const segment = WHEEL_SEGMENTS.find(s => s.id === player.assignedSegmentId);
+            if (segment) {
+                // Parallelize the text and speech generation for this specific result
+                const commentaryPromise = generateCommentary(segment, player.name, currentElf);
+                const script = `Ho ho ho! ${player.name} landed on ${segment.label}! Here is the rule. ${segment.description}`;
+                const audioPromise = generateElfSpeech(script, currentElf);
+                
+                const [text, audio] = await Promise.all([commentaryPromise, audioPromise]);
+                resultCache.current.set(player.id, { text, audio });
             }
+
           } catch (e) {
-            console.warn(`Failed to prewarm audio for ${player.name}`, e);
+            console.warn(`Failed to prewarm assets for ${player.name}`, e);
           } finally {
-            // Always set ready after first attempt (success or fail) so game doesn't hang
+            // Mark first player as ready so we can unlock the "Let's Play" button
             if (i === 0) {
                 setFirstPlayerReady(true);
             }
@@ -101,93 +152,130 @@ function App() {
         }
       };
 
-      prewarmContent();
+      prewarmGame();
     }
-  }, [gameState, players]);
+  }, [gameState, players, currentElf]); // Dependencies ensures this runs when game starts
 
-  // Effect to handle Player Turn Announcements
+  // ---------------------------------------------------------------------------
+  // Player Turn Management (Intro Audio)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (gameState === GameState.PLAYING && players[currentPlayerIndex]) {
       const player = players[currentPlayerIndex];
       
-      // Prevent duplicate announcements if component re-renders but player hasn't changed
-      if (lastAnnouncedPlayerId.current === player.id) return;
-      lastAnnouncedPlayerId.current = player.id;
+      if (lastAnnouncedPlayerId.current !== player.id) {
+        lastAnnouncedPlayerId.current = player.id;
 
-      const playAnnouncement = async () => {
-        setIsAnnouncing(true);
-        try {
-          let buffer = audioCache.current.get(player.id);
+        const playAnnouncement = async () => {
+          setIsAnnouncing(true);
+          try {
+            let buffer = introCache.current.get(player.id);
 
-          // If not in cache, generate it now (fallback)
-          if (!buffer) {
-             const text = await generatePlayerAnnouncement(player.name);
-             buffer = await generateElfSpeech(text);
-          }
-          
-          if (buffer) {
-            // Stop any playing audio
-            if (announcementSource.current) {
-              announcementSource.current.stop();
+            // Fallback: Generate just-in-time if cache missed (should rarely happen)
+            if (!buffer) {
+               console.log(`Cache miss for ${player.name} intro - generating now`);
+               const text = await generatePlayerAnnouncement(player.name, currentElf);
+               buffer = await generateElfSpeech(text, currentElf);
             }
-
-            // Init context
-            if (!announcementAudioCtx.current || announcementAudioCtx.current.state === 'closed') {
-              announcementAudioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            }
-
-            const source = announcementAudioCtx.current.createBufferSource();
-            source.buffer = buffer;
-            source.connect(announcementAudioCtx.current.destination);
-            source.onended = () => setIsAnnouncing(false);
             
-            announcementSource.current = source;
-            source.start();
-          } else {
+            if (buffer) {
+              if (announcementSource.current) announcementSource.current.stop();
+
+              if (!announcementAudioCtx.current || announcementAudioCtx.current.state === 'closed') {
+                announcementAudioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+              }
+
+              const source = announcementAudioCtx.current.createBufferSource();
+              source.buffer = buffer;
+              source.connect(announcementAudioCtx.current.destination);
+              source.onended = () => setIsAnnouncing(false);
+              
+              announcementSource.current = source;
+              source.start();
+            } else {
+              setIsAnnouncing(false);
+            }
+          } catch (e) {
+            console.error("Announcement failed", e);
             setIsAnnouncing(false);
           }
-        } catch (e) {
-          console.error("Announcement failed", e);
-          setIsAnnouncing(false);
-        }
-      };
+        };
+        playAnnouncement();
+      }
 
-      playAnnouncement();
     } else if (gameState !== GameState.PLAYING) {
       lastAnnouncedPlayerId.current = null;
     }
-  }, [gameState, currentPlayerIndex, players]);
+  }, [gameState, currentPlayerIndex, players, currentElf]);
 
-  const handleSpin = () => {
+
+  // ---------------------------------------------------------------------------
+  // Spin Handler (Instant Result)
+  // ---------------------------------------------------------------------------
+  const handleSpin = async () => {
     if (isSpinning || showResult) return;
     
     // Stop announcement audio if user spins immediately
     if (announcementSource.current) {
-      try {
-        announcementSource.current.stop();
-      } catch(e) { /* ignore */ }
+      try { announcementSource.current.stop(); } catch(e) { /* ignore */ }
     }
     setIsAnnouncing(false);
 
     setIsSpinning(true);
-    setSpinTrigger(prev => prev + 1);
+    setTargetSegment(null);
+    setResultContent(null);
+    
+    // Minimum spin time for visual satisfaction
+    const minSpinTimePromise = new Promise(resolve => setTimeout(resolve, 2000));
+
+    try {
+      const player = players[currentPlayerIndex];
+      const assignedSegment = WHEEL_SEGMENTS.find(s => s.id === player.assignedSegmentId) || WHEEL_SEGMENTS[0];
+      
+      // Check cache for result content
+      let content = resultCache.current.get(player.id);
+      
+      // Fallback generation if cache missed (e.g. user clicked VERY fast)
+      if (!content) {
+        console.log(`Cache miss for ${player.name} result - generating now`);
+        const commentaryPromise = generateCommentary(assignedSegment, player.name, currentElf);
+        const script = `Ho ho ho! ${player.name} landed on ${assignedSegment.label}! Here is the rule. ${assignedSegment.description}`;
+        const audioPromise = generateElfSpeech(script, currentElf);
+        const [text, audio] = await Promise.all([commentaryPromise, audioPromise]);
+        content = { text, audio };
+      }
+
+      // Wait for minimum spin time
+      await minSpinTimePromise;
+
+      // Ready to stop
+      setResultContent(content);
+      setTargetSegment(assignedSegment); 
+
+    } catch (error) {
+       console.error("Error preparing result:", error);
+       setResultContent({ text: "The elves lost the connection!", audio: null });
+       setTargetSegment(WHEEL_SEGMENTS[0]);
+    }
   };
 
-  const handleSpinComplete = (segment: WheelSegment) => {
-    setIsSpinning(false);
-    setLastResult(segment);
-    setShowResult(true);
+  const handleSpinComplete = () => {
+    if (targetSegment) {
+      setIsSpinning(false);
+      setLastResult(targetSegment);
+      setShowResult(true);
+      setTargetSegment(null);
+    }
   };
 
   const handleCloseResult = () => {
     setShowResult(false);
+    setResultContent(null);
     
-    // Update current player status
     const updatedPlayers = [...players];
     updatedPlayers[currentPlayerIndex].hasGone = true;
     setPlayers(updatedPlayers);
 
-    // Check for game over or next player
     if (currentPlayerIndex >= players.length - 1) {
       setGameState(GameState.FINISHED);
     } else {
@@ -199,13 +287,16 @@ function App() {
     if (announcementSource.current) {
       try { announcementSource.current.stop(); } catch(e) { /* ignore */ }
     }
-    audioCache.current.clear();
+    introCache.current.clear();
+    resultCache.current.clear();
     setGameState(GameState.LOBBY);
     setPlayers([]);
     setCurrentPlayerIndex(0);
     setLastResult(null);
     setFirstPlayerReady(false);
     setOrderAudioBuffer(null);
+    setIsSpinning(false);
+    setTargetSegment(null);
   };
 
   // Snow animation background component
@@ -287,6 +378,7 @@ function App() {
               onConfirm={handleConfirmOrder}
               firstPlayerReady={firstPlayerReady}
               orderAudioBuffer={orderAudioBuffer}
+              hostName={currentElf.name}
             />
           </div>
         )}
@@ -321,9 +413,9 @@ function App() {
                 <div className="relative w-full h-full flex items-center justify-center min-h-0 py-6 px-2">
                     <div className="aspect-square h-full max-h-full w-auto max-w-full relative object-contain">
                         <Wheel 
-                          isSpinning={isSpinning} 
+                          isSpinning={isSpinning}
+                          targetSegment={targetSegment}
                           onSpinComplete={handleSpinComplete}
-                          spinTrigger={spinTrigger}
                         />
                     </div>
                 </div>
@@ -340,7 +432,12 @@ function App() {
              {/* Desktop Status Panel (Right Side) */}
              <div className="hidden md:flex w-96 flex-col shrink-0 h-auto bg-white/95 backdrop-blur rounded-2xl shadow-2xl border-t-8 border-christmas-gold overflow-hidden">
                 <div className="p-6 bg-gray-50 border-b border-gray-100">
-                  <h3 className="text-gray-400 font-bold uppercase text-xs tracking-wider mb-4">Current Turn</h3>
+                  <div className="flex justify-between items-center mb-4">
+                     <h3 className="text-gray-400 font-bold uppercase text-xs tracking-wider">Current Turn</h3>
+                     <span className="text-xs font-bold text-christmas-gold uppercase bg-amber-50 px-2 py-1 rounded-full border border-amber-100 flex items-center gap-1">
+                        <User size={10} /> Host: {currentElf.name}
+                     </span>
+                  </div>
                   <div className="text-center">
                     <div className="text-6xl mb-4 animate-bounce relative inline-block">
                       🎅
@@ -385,18 +482,10 @@ function App() {
               
               <div className="space-y-3">
                 <button 
-                  onClick={() => {
-                    const shuffledPlayers = [...players];
-                    for (let i = shuffledPlayers.length - 1; i > 0; i--) {
-                      const j = Math.floor(Math.random() * (i + 1));
-                      [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
-                    }
-                    setPlayers(shuffledPlayers);
-                    setGameState(GameState.DETERMINING_ORDER);
-                  }}
+                  onClick={handleStartGame}
                   className="w-full bg-christmas-green text-white py-3 rounded-lg font-bold hover:bg-green-800 transition"
                 >
-                  Play Again (Reshuffle & Play)
+                  Play Again (Reshuffle & New Host)
                 </button>
                 <button 
                   onClick={handleReset}
@@ -416,6 +505,8 @@ function App() {
           segment={lastResult} 
           player={players[currentPlayerIndex]}
           onClose={handleCloseResult}
+          preloadedCommentary={resultContent?.text}
+          preloadedAudio={resultContent?.audio}
         />
       )}
     </div>

@@ -1,3 +1,4 @@
+
 export enum SegmentColor {
   RED = '#D42426',
   GREEN = '#2F5D35',
@@ -48,6 +49,15 @@ export interface Player {
   name: string;
   hasGone: boolean;
   giftNumber?: number;
+  assignedSegmentId?: string; // Pre-calculated result ID
+}
+
+export interface ElfPersona {
+  id: string;
+  name: string;
+  voice: string; // Gemini TTS Voice Name (Puck, Kore, Charon, etc.)
+  personality: string;
+  description: string;
 }
 
 export enum GameState {
