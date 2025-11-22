@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { WheelSegment, ElfPersona } from "../types";
 
 const apiKey = process.env.API_KEY;
@@ -35,6 +35,76 @@ async function decodeAudioData(
   return buffer;
 }
 
+export const generateElfProfiles = async (): Promise<ElfPersona[]> => {
+  if (!apiKey) return [];
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: "Generate 4 distinct, fun Christmas Elf characters for a game show. Each must have a unique name, a specific 3-word personality description, a full-time North Pole job title, and a favorite pastime (like sipping cocoa). Assign one of these voice IDs to each randomly: Puck, Kore, Charon, Fenrir, Zephyr.",
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              name: { type: Type.STRING },
+              personality: { type: Type.STRING },
+              job: { type: Type.STRING },
+              pastime: { type: Type.STRING },
+              voice: { type: Type.STRING }
+            },
+            required: ["id", "name", "personality", "job", "pastime", "voice"]
+          }
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) return [];
+    return JSON.parse(text) as ElfPersona[];
+  } catch (error) {
+    console.error("Error generating elf profiles:", error);
+    // Fallback profiles
+    return [
+      { id: '1', name: 'Jingle', personality: 'Cheerful, Loud, Clumsy', job: 'Bell Polisher', pastime: 'Humming carols', voice: 'Puck' },
+      { id: '2', name: 'Trixie', personality: 'Clever, Sarcastic, Fast', job: 'List Checker', pastime: 'Racing reindeer', voice: 'Kore' },
+      { id: '3', name: 'Barnaby', personality: 'Wise, Old, Slow', job: 'Toy Inspector', pastime: 'Sipping hot cocoa', voice: 'Charon' },
+      { id: '4', name: 'Zap', personality: 'Energetic, Hyper, Electric', job: 'Light String Detangler', pastime: 'Eating sugar cubes', voice: 'Fenrir' }
+    ];
+  }
+};
+
+export const generateElfAvatar = async (elf: ElfPersona): Promise<string | undefined> => {
+  if (!apiKey) return undefined;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    // Using gemini-2.5-flash-image for generation as per guidelines (though typically input, instructions allow generation via generateContent for nano banana series)
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [
+           { text: `A cute, high-quality 3D render style profile picture of a Christmas elf named ${elf.name}. Personality: ${elf.personality}. Job: ${elf.job}. Solid festive background color.` }
+        ]
+      }
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    return undefined;
+  } catch (error) {
+    console.warn(`Failed to generate image for ${elf.name}`, error);
+    return undefined;
+  }
+};
+
 export const generateCommentary = async (segment: WheelSegment, playerName: string, elf: ElfPersona): Promise<string> => {
   if (!apiKey) {
     return "Ho ho ho! The spirits of Christmas have spoken!";
@@ -44,14 +114,11 @@ export const generateCommentary = async (segment: WheelSegment, playerName: stri
     const ai = new GoogleGenAI({ apiKey });
     const prompt = `
       You are ${elf.name}, a ${elf.personality} Christmas Elf game show host.
+      Your job is ${elf.job} and you love ${elf.pastime}.
       A player named "${playerName}" just spun the Wheel of Christmas and landed on "${segment.label}".
       The rule for this spot is: "${segment.description}".
       
       Give a very short (max 1 sentence) reaction to this result based on your personality.
-      
-      Persona Guidelines:
-      - Name: ${elf.name}
-      - Personality: ${elf.personality}
       
       Keep it family friendly but entertaining.
     `;
@@ -75,13 +142,10 @@ export const generatePlayerAnnouncement = async (playerName: string, elf: ElfPer
     const ai = new GoogleGenAI({ apiKey });
     const prompt = `
       You are ${elf.name}, a ${elf.personality} Christmas Elf game show host.
+      Your day job is ${elf.job}.
       It is now "${playerName}"'s turn to spin the wheel.
       
       Write a very short (1 sentence) announcement telling them to spin, using your specific personality style.
-      
-      Persona Guidelines:
-      - Name: ${elf.name}
-      - Personality: ${elf.personality}
       
       Keep it exciting and varied.
     `;
@@ -101,22 +165,21 @@ export const generatePlayerAnnouncement = async (playerName: string, elf: ElfPer
 export const generateOrderAnnouncement = async (playerNames: string[], elf: ElfPersona): Promise<string> => {
   if (!apiKey) {
     const first = playerNames[0] || "someone";
-    const last = playerNames[playerNames.length - 1] || "someone else";
-    return `Hello! I'm ${elf.name}! Ooh, looks like ${first} is the lucky player who gets to go first! And looks like ${last} might be getting a lump of coal. Let's get started!`;
+    return `Hello! I'm ${elf.name}! ${first} is first! Let's get started!`;
   }
 
   try {
     const ai = new GoogleGenAI({ apiKey });
     const prompt = `
       You are ${elf.name}, a ${elf.personality} Christmas Elf game show host.
+      Introduce yourself briefly (Mention you are the ${elf.job}).
       The random order of play has been decided.
       The players are (in order): ${playerNames.join(', ')}.
       
       Write a script announcing this.
-      - Start by introducing yourself: "Hello everyone! I'm ${elf.name}, your ${elf.description}!"
+      - Start by introducing yourself.
       - Announce that ${playerNames[0]} is the lucky one starting us off.
       - List the others quickly.
-      - Make a comment about the last player (${playerNames[playerNames.length - 1]}) based on your personality (e.g. if you are grumpy, say they are slow; if you are sweet, say you saved the best for last, etc).
       - End exactly with: "Let's get started!"
       
       Keep it under 4 sentences total.

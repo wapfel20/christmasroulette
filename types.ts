@@ -56,12 +56,15 @@ export interface ElfPersona {
   id: string;
   name: string;
   voice: string; // Gemini TTS Voice Name (Puck, Kore, Charon, etc.)
-  personality: string;
-  description: string;
+  personality: string; // 3 words
+  job: string; // Full time elf job
+  pastime: string; // Favorite pastime
+  avatarUrl?: string; // Base64 image
 }
 
 export enum GameState {
   LOBBY = 'LOBBY',
+  SELECTING_HOST = 'SELECTING_HOST',
   DETERMINING_ORDER = 'DETERMINING_ORDER',
   PLAYING = 'PLAYING',
   FINISHED = 'FINISHED',

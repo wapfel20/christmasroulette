@@ -6,8 +6,9 @@ import GameLobby from './components/GameLobby';
 import Wheel from './components/Wheel';
 import ResultCard from './components/ResultCard';
 import OrderReveal from './components/OrderReveal';
+import HostSelection from './components/HostSelection';
 import { Gift, RefreshCw, Trophy, Snowflake, Volume2, User } from 'lucide-react';
-import { generatePlayerAnnouncement, generateElfSpeech, generateOrderAnnouncement, generateCommentary } from './services/geminiService';
+import { generatePlayerAnnouncement, generateElfSpeech, generateOrderAnnouncement, generateCommentary, generateElfProfiles, generateElfAvatar } from './services/geminiService';
 
 function App() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -17,6 +18,8 @@ function App() {
   
   // Elf Host State
   const [currentElf, setCurrentElf] = useState<ElfPersona>(ELF_HOSTS[0]);
+  const [generatedHosts, setGeneratedHosts] = useState<ElfPersona[]>([]);
+  const [isGeneratingHosts, setIsGeneratingHosts] = useState(false);
 
   // Spin Logic State
   const [targetSegment, setTargetSegment] = useState<WheelSegment | null>(null);
@@ -34,9 +37,7 @@ function App() {
   const lastAnnouncedPlayerId = useRef<string | null>(null);
   
   // Caches for pre-generated content
-  // 1. Intro Cache: Stores the "It's your turn!" audio
   const introCache = useRef<Map<string, AudioBuffer>>(new Map());
-  // 2. Result Cache: Stores the "You won X!" commentary text and audio
   const resultCache = useRef<Map<string, { text: string, audio: AudioBuffer | null }>>(new Map());
 
   const handleAddPlayer = (name: string) => {
@@ -47,16 +48,15 @@ function App() {
     setPlayers(players.filter(p => p.id !== id));
   };
 
-  const handleStartGame = () => {
-    // 1. Randomize Players (Fisher-Yates Shuffle)
+  // Transition: Lobby -> Host Selection
+  const handleStartGame = async () => {
+    // 1. Randomize Players & Pre-assign segments
     const shuffledPlayers = [...players];
     for (let i = shuffledPlayers.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
     }
 
-    // 2. Pre-determine results for EVERY player now.
-    // This guarantees randomness and allows us to pre-warm everything.
     const playersWithSegments = shuffledPlayers.map(p => {
        const randomSegment = WHEEL_SEGMENTS[Math.floor(Math.random() * WHEEL_SEGMENTS.length)];
        return {
@@ -66,18 +66,26 @@ function App() {
     });
 
     setPlayers(playersWithSegments);
+    setGameState(GameState.SELECTING_HOST);
+    setIsGeneratingHosts(true);
 
-    // 3. Randomize Elf Host (Ensure we pick a different one from last time)
-    let randomElf;
-    if (ELF_HOSTS.length > 1) {
-      do {
-        randomElf = ELF_HOSTS[Math.floor(Math.random() * ELF_HOSTS.length)];
-      } while (randomElf.id === currentElf.id);
-    } else {
-      randomElf = ELF_HOSTS[0];
-    }
-    setCurrentElf(randomElf);
+    // 2. Generate 4 Elf Options
+    const elves = await generateElfProfiles();
+    setGeneratedHosts(elves);
+    
+    // 3. Generate Images for them (Parallel)
+    const elvesWithImages = await Promise.all(elves.map(async (elf) => {
+      const avatarUrl = await generateElfAvatar(elf);
+      return { ...elf, avatarUrl };
+    }));
+    
+    setGeneratedHosts(elvesWithImages);
+    setIsGeneratingHosts(false);
+  };
 
+  // Transition: Host Selection -> Order Reveal
+  const handleHostSelected = (host: ElfPersona) => {
+    setCurrentElf(host);
     setGameState(GameState.DETERMINING_ORDER);
   };
 
@@ -112,12 +120,9 @@ function App() {
         }
 
         // 2. Sequential Pre-warming for ALL players
-        // We do this sequentially to avoid hitting rate limits with too many concurrent requests,
-        // but since we start immediately, we should stay ahead of the game.
         for (let i = 0; i < players.length; i++) {
           const player = players[i];
           
-          // Skip if already generated (in case of weird re-renders)
           if (introCache.current.has(player.id) && resultCache.current.has(player.id)) {
             if (i === 0) setFirstPlayerReady(true);
             continue;
@@ -132,7 +137,6 @@ function App() {
             // B. Generate Result Commentary (using pre-assigned segment)
             const segment = WHEEL_SEGMENTS.find(s => s.id === player.assignedSegmentId);
             if (segment) {
-                // Parallelize the text and speech generation for this specific result
                 const commentaryPromise = generateCommentary(segment, player.name, currentElf);
                 const script = `Ho ho ho! ${player.name} landed on ${segment.label}! Here is the rule. ${segment.description}`;
                 const audioPromise = generateElfSpeech(script, currentElf);
@@ -144,7 +148,6 @@ function App() {
           } catch (e) {
             console.warn(`Failed to prewarm assets for ${player.name}`, e);
           } finally {
-            // Mark first player as ready so we can unlock the "Let's Play" button
             if (i === 0) {
                 setFirstPlayerReady(true);
             }
@@ -154,7 +157,7 @@ function App() {
 
       prewarmGame();
     }
-  }, [gameState, players, currentElf]); // Dependencies ensures this runs when game starts
+  }, [gameState, players, currentElf]);
 
   // ---------------------------------------------------------------------------
   // Player Turn Management (Intro Audio)
@@ -171,9 +174,8 @@ function App() {
           try {
             let buffer = introCache.current.get(player.id);
 
-            // Fallback: Generate just-in-time if cache missed (should rarely happen)
+            // Fallback: Generate just-in-time if cache missed
             if (!buffer) {
-               console.log(`Cache miss for ${player.name} intro - generating now`);
                const text = await generatePlayerAnnouncement(player.name, currentElf);
                buffer = await generateElfSpeech(text, currentElf);
             }
@@ -235,9 +237,8 @@ function App() {
       // Check cache for result content
       let content = resultCache.current.get(player.id);
       
-      // Fallback generation if cache missed (e.g. user clicked VERY fast)
+      // Fallback generation if cache missed
       if (!content) {
-        console.log(`Cache miss for ${player.name} result - generating now`);
         const commentaryPromise = generateCommentary(assignedSegment, player.name, currentElf);
         const script = `Ho ho ho! ${player.name} landed on ${assignedSegment.label}! Here is the rule. ${assignedSegment.description}`;
         const audioPromise = generateElfSpeech(script, currentElf);
@@ -245,10 +246,8 @@ function App() {
         content = { text, audio };
       }
 
-      // Wait for minimum spin time
       await minSpinTimePromise;
 
-      // Ready to stop
       setResultContent(content);
       setTargetSegment(assignedSegment); 
 
@@ -297,6 +296,7 @@ function App() {
     setOrderAudioBuffer(null);
     setIsSpinning(false);
     setTargetSegment(null);
+    setGeneratedHosts([]);
   };
 
   // Snow animation background component
@@ -371,6 +371,16 @@ function App() {
           </div>
         )}
 
+        {gameState === GameState.SELECTING_HOST && (
+           <div className="p-4 w-full h-full overflow-y-auto flex items-center justify-center">
+             <HostSelection 
+               hosts={generatedHosts}
+               onSelectHost={handleHostSelected}
+               isLoading={isGeneratingHosts}
+             />
+           </div>
+        )}
+
         {gameState === GameState.DETERMINING_ORDER && (
           <div className="p-4 w-full h-full overflow-y-auto flex items-center justify-center">
             <OrderReveal 
@@ -438,15 +448,19 @@ function App() {
                         <User size={10} /> Host: {currentElf.name}
                      </span>
                   </div>
+                  {/* Avatar */}
                   <div className="text-center">
-                    <div className="text-6xl mb-4 animate-bounce relative inline-block">
-                      🎅
-                      {isAnnouncing && (
-                        <div className="absolute -top-2 -right-4 bg-white rounded-full p-1 shadow-sm animate-pulse">
-                           <Volume2 size={20} className="text-christmas-green" />
-                        </div>
-                      )}
+                    <div className="w-20 h-20 mx-auto mb-2 rounded-full border-4 border-white shadow-md overflow-hidden relative bg-gray-200">
+                        {currentElf.avatarUrl ? (
+                            <img src={currentElf.avatarUrl} alt="Host" className="w-full h-full object-cover" />
+                        ) : (
+                            <span className="text-4xl leading-[80px]">🎅</span>
+                        )}
+                        {isAnnouncing && (
+                           <div className="absolute inset-0 bg-green-500/20 animate-pulse"></div>
+                        )}
                     </div>
+
                     <div className="text-3xl font-bold text-gray-800 font-christmas mb-2">{currentPlayer?.name}</div>
                     <p className="text-christmas-green text-sm font-medium bg-green-50 inline-block px-3 py-1 rounded-full border border-green-100">It's your time to shine!</p>
                   </div>
@@ -482,16 +496,13 @@ function App() {
               
               <div className="space-y-3">
                 <button 
-                  onClick={handleStartGame}
+                  onClick={() => {
+                    handleReset();
+                    setGameState(GameState.LOBBY);
+                  }}
                   className="w-full bg-christmas-green text-white py-3 rounded-lg font-bold hover:bg-green-800 transition"
                 >
-                  Play Again (Reshuffle & New Host)
-                </button>
-                <button 
-                  onClick={handleReset}
-                  className="w-full bg-white border-2 border-gray-200 text-gray-600 py-3 rounded-lg font-bold hover:bg-gray-50 transition"
-                >
-                  New Game
+                  Play Again
                 </button>
               </div>
             </div>
