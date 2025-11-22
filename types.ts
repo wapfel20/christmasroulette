@@ -35,6 +35,8 @@ export enum SegmentColor {
   PATTERN_GINGERBREAD = 'url(#pattern-gingerbread)',
 }
 
+export type SegmentSentiment = 'positive' | 'negative' | 'chaotic' | 'neutral';
+
 export interface WheelSegment {
   id: string;
   label: string;
@@ -42,6 +44,7 @@ export interface WheelSegment {
   color: SegmentColor | string;
   textColor: string;
   icon: string;
+  sentiment: SegmentSentiment;
 }
 
 export interface Player {

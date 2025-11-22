@@ -41,7 +41,7 @@ export const generateElfProfiles = async (): Promise<ElfPersona[]> => {
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-lite-latest',
       contents: "Generate 4 distinct, fun Christmas Elf characters for a game show. Each must have a unique name, a specific 3-word personality description, a full-time North Pole job title, and a favorite pastime (like sipping cocoa). Assign one of these voice IDs to each randomly: Puck, Kore, Charon, Fenrir, Zephyr.",
       config: {
         responseMimeType: "application/json",

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Player, GameState, WheelSegment, ElfPersona } from './types';
+import { Player, GameState, WheelSegment, ElfPersona, SegmentSentiment } from './types';
 import { WHEEL_SEGMENTS, ELF_HOSTS } from './constants';
 import GameLobby from './components/GameLobby';
 import Wheel from './components/Wheel';
@@ -97,6 +97,17 @@ function App() {
     setCurrentPlayerIndex(0);
   };
 
+  const getHostReaction = (sentiment: SegmentSentiment) => {
+    const reactions = {
+      positive: ["Hooray!", "Wonderful!", "Splendid!", "Fantastic news!", "Lucky you!", "A joyous result!"],
+      negative: ["Oh barnacles!", "Oh dear.", "That's unfortunate.", "Better luck next time.", "Ouch!", "Coal for you!"],
+      chaotic: ["Mischief time!", "Oh this is exciting!", "Chaos incoming!", "Spicy!", "Watch out!", "Oh my!"],
+      neutral: ["Interesting...", "Let's see.", "A curious turn.", "Ooh.", "Well then.", "Hmm..."]
+    };
+    const list = reactions[sentiment] || reactions.neutral;
+    return list[Math.floor(Math.random() * list.length)];
+  };
+
   // ---------------------------------------------------------------------------
   // Global Pre-warming Effect
   // This runs once the order is determined and processes ALL players in background.
@@ -138,7 +149,10 @@ function App() {
             const segment = WHEEL_SEGMENTS.find(s => s.id === player.assignedSegmentId);
             if (segment) {
                 const commentaryPromise = generateCommentary(segment, player.name, currentElf);
-                const script = `Ho ho ho! ${player.name} landed on ${segment.label}! Here is the rule. ${segment.description}`;
+                
+                // Construct TTS Script with dynamic reaction
+                const reaction = getHostReaction(segment.sentiment);
+                const script = `${reaction} ${player.name} landed on ${segment.label}! Here is the rule. ${segment.description}`;
                 const audioPromise = generateElfSpeech(script, currentElf);
                 
                 const [text, audio] = await Promise.all([commentaryPromise, audioPromise]);
@@ -240,8 +254,11 @@ function App() {
       // Fallback generation if cache missed
       if (!content) {
         const commentaryPromise = generateCommentary(assignedSegment, player.name, currentElf);
-        const script = `Ho ho ho! ${player.name} landed on ${assignedSegment.label}! Here is the rule. ${assignedSegment.description}`;
+        
+        const reaction = getHostReaction(assignedSegment.sentiment);
+        const script = `${reaction} ${player.name} landed on ${assignedSegment.label}! Here is the rule. ${assignedSegment.description}`;
         const audioPromise = generateElfSpeech(script, currentElf);
+        
         const [text, audio] = await Promise.all([commentaryPromise, audioPromise]);
         content = { text, audio };
       }

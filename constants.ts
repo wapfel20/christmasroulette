@@ -53,7 +53,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: SANTAS_CHOICE_DESC,
     color: SegmentColor.PATTERN_CANDY_CANE,
     textColor: '#FFFFFF',
-    icon: 'santa'
+    icon: 'santa',
+    sentiment: 'positive'
   },
   {
     id: '2',
@@ -61,7 +62,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: "No stealing allowed! You must pick a wrapped gift from the center pile.",
     color: SegmentColor.PATTERN_SNOWFLAKE_BLUE,
     textColor: '#FFFFFF',
-    icon: 'snowflake'
+    icon: 'snowflake',
+    sentiment: 'positive'
   },
   {
     id: '3',
@@ -69,7 +71,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: SANTAS_CHOICE_DESC,
     color: SegmentColor.PATTERN_RED_DOTS,
     textColor: '#FFFFFF',
-    icon: 'santa'
+    icon: 'santa',
+    sentiment: 'positive'
   },
   {
     id: '4',
@@ -77,7 +80,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: "You must steal an open gift from someone else. You cannot open a new gift.",
     color: SegmentColor.PATTERN_PLAID,
     textColor: '#FFFFFF',
-    icon: 'hand'
+    icon: 'hand',
+    sentiment: 'chaotic'
   },
   {
     id: '5',
@@ -85,7 +89,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: "You may steal a Frozen (locked) gift that has already been stolen 3 times.",
     color: SegmentColor.PATTERN_GOLD_FOIL,
     textColor: '#713f12', // Dark Brown text for Gold
-    icon: 'hammer'
+    icon: 'hammer',
+    sentiment: 'chaotic'
   },
   {
     id: '6',
@@ -93,7 +98,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: SANTAS_CHOICE_DESC,
     color: SegmentColor.PATTERN_STRIPES_RG,
     textColor: '#FFFFFF',
-    icon: 'santa'
+    icon: 'santa',
+    sentiment: 'positive'
   },
   {
     id: '7',
@@ -101,7 +107,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: "Pick a wrapped gift and unwrap it privately. You may Keep it or Re-wrap and steal.",
     color: SegmentColor.PATTERN_KRAFT,
     textColor: '#422006', // Dark Brown text for Kraft
-    icon: 'box'
+    icon: 'box',
+    sentiment: 'neutral'
   },
   {
     id: '8',
@@ -109,7 +116,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: SANTAS_CHOICE_DESC,
     color: SegmentColor.PATTERN_ZIGZAG_RED,
     textColor: '#FFFFFF',
-    icon: 'santa'
+    icon: 'santa',
+    sentiment: 'positive'
   },
   {
     id: '9',
@@ -117,7 +125,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: "Unwrap a new gift. You must immediately swap it with the person holding the lowest number.",
     color: SegmentColor.PATTERN_HOLLY,
     textColor: '#14532d', // Dark Green for light holly background
-    icon: 'shuffle'
+    icon: 'shuffle',
+    sentiment: 'chaotic'
   },
   {
     id: '10',
@@ -125,7 +134,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: "Take a normal turn. Afterward, you receive the Immunity Token.",
     color: SegmentColor.PATTERN_MIDNIGHT,
     textColor: '#fbbf24', // Amber/Gold text
-    icon: 'moon'
+    icon: 'moon',
+    sentiment: 'positive'
   },
   {
     id: '11',
@@ -133,7 +143,8 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: SANTAS_CHOICE_DESC,
     color: SegmentColor.PATTERN_SNOWFLAKE_RED,
     textColor: '#FFFFFF',
-    icon: 'santa'
+    icon: 'santa',
+    sentiment: 'positive'
   },
   {
     id: '12',
@@ -141,6 +152,7 @@ export const WHEEL_SEGMENTS: WheelSegment[] = [
     description: "You must steal from a person matching a criteria announced by the host.",
     color: SegmentColor.PATTERN_GINGERBREAD,
     textColor: '#FFFFFF',
-    icon: 'radar'
+    icon: 'radar',
+    sentiment: 'chaotic'
   }
 ];
